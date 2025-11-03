@@ -7,11 +7,24 @@ on:
     types: [opened,reopened,synchronize]
     branches:
       - main
-      
+  workflow_dispatch:
+    inputs:
+      h2_version:
+        description: 'H2 Database Version (e.g., 2.3.232)'
+        required: true
+        type: string
+      h2_releasedate:
+        description: 'H2 Release Date (e.g., 2024-08-11)'
+        required: true
+        type: string
+
 jobs:
   build:
     name: Build with buildx
     runs-on: ubuntu-latest
+    env:
+      H2_VERSION: ${{ github.event.inputs.h2_version || secrets.H2VERSION }}
+      H2_RELEASEDATE: ${{ github.event.inputs.h2_releasedate || secrets.H2_RELEASEDATE }}
     steps:
 
       - name: Checkout source code
@@ -45,22 +58,23 @@ jobs:
           echo "Status:         ${{ steps.buildx.outputs.status }}"
           echo "Flags:          ${{ steps.buildx.outputs.flags }}"
           echo "Platforms:      ${{ steps.buildx.outputs.platforms }}"
-          echo "H2VERSION:      ${{ secrets.H2VERSION }}"
-          echo "H2_RELEASEDATE: ${{ secrets.H2_RELEASEDATE }}"
+          echo "H2VERSION:      ${{ env.H2_VERSION }}"
+          echo "H2_RELEASEDATE: ${{ env.H2_RELEASEDATE }}"
+          echo "Trigger:        ${{ github.event_name }}"
+          echo "Is Manual:      ${{ github.event_name == 'workflow_dispatch' }}"
 
           
       - name: Build and push
         uses: docker/build-push-action@v3
         with:
           platforms: linux/amd64,linux/arm64,linux/ppc64le,linux/s390x,linux/386,linux/arm/v7,linux/arm/v6
-          push: true
-          tags: rkaehdaos/h2:latest, rkaehdaos/h2:${{ secrets.H2VERSION }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: rkaehdaos/h2:latest, rkaehdaos/h2:${{ env.H2_VERSION }}
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new
-          # secrets: |
           build-args: |
-            "H2_VERSION=${{ secrets.H2VERSION }}"
-            "H2_RELEASEDATE=${{ secrets.H2RELEASEDATE }}"
+            H2_VERSION=${{ env.H2_VERSION }}
+            H2_RELEASEDATE=${{ env.H2_RELEASEDATE }}
 
       # layer caching
       # github의 repo는 5GB까지만 Cache 보관 가능
