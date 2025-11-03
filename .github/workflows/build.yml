@@ -10,13 +10,15 @@ on:
   workflow_dispatch:
     inputs:
       h2_version:
-        description: 'H2 Database Version (e.g., 2.3.232)'
-        required: true
+        description: 'H2 Database Version (e.g., 2.3.232) - Leave empty to use secret'
+        required: false
         type: string
+        default: ''
       h2_releasedate:
-        description: 'H2 Release Date (e.g., 2024-08-11)'
-        required: true
+        description: 'H2 Release Date (e.g., 2024-08-11) - Leave empty to use secret'
+        required: false
         type: string
+        default: ''
 
 jobs:
   build:
@@ -29,7 +31,39 @@ jobs:
 
       - name: Checkout source code
         uses: actions/checkout@master
-      
+
+      - name: Validate version inputs
+        run: |
+          echo "Validating H2 version inputs..."
+
+          # H2_VERSION 검증
+          if [ -z "${{ env.H2_VERSION }}" ]; then
+            echo "::error::H2_VERSION is not set. Please provide input or configure secret."
+            exit 1
+          fi
+
+          # H2_RELEASEDATE 검증
+          if [ -z "${{ env.H2_RELEASEDATE }}" ]; then
+            echo "::error::H2_RELEASEDATE is not set. Please provide input or configure secret."
+            exit 1
+          fi
+
+          # 버전 형식 검증 (예: 2.3.232)
+          if ! echo "${{ env.H2_VERSION }}" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' > /dev/null; then
+            echo "::error::H2_VERSION format is invalid. Expected format: X.Y.Z (e.g., 2.3.232)"
+            exit 1
+          fi
+
+          # 날짜 형식 검증 (예: 2024-08-11)
+          if ! echo "${{ env.H2_RELEASEDATE }}" | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' > /dev/null; then
+            echo "::error::H2_RELEASEDATE format is invalid. Expected format: YYYY-MM-DD (e.g., 2024-08-11)"
+            exit 1
+          fi
+
+          echo "✓ H2_VERSION: ${{ env.H2_VERSION }}"
+          echo "✓ H2_RELEASEDATE: ${{ env.H2_RELEASEDATE }}"
+          echo "Validation passed!"
+
       - name: Setup QEMU
         uses: docker/setup-qemu-action@v2
 
@@ -63,13 +97,26 @@ jobs:
           echo "Trigger:        ${{ github.event_name }}"
           echo "Is Manual:      ${{ github.event_name == 'workflow_dispatch' }}"
 
-          
+      - name: Prepare Docker tags
+        id: docker_tags
+        run: |
+          # 환경 변수가 설정되었는지 재확인
+          if [ -z "${{ env.H2_VERSION }}" ]; then
+            echo "::error::H2_VERSION is empty, cannot create tags"
+            exit 1
+          fi
+
+          # 태그 생성
+          TAGS="rkaehdaos/h2:latest,rkaehdaos/h2:${{ env.H2_VERSION }}"
+          echo "tags=${TAGS}" >> $GITHUB_OUTPUT
+          echo "Docker tags: ${TAGS}"
+
       - name: Build and push
         uses: docker/build-push-action@v3
         with:
           platforms: linux/amd64,linux/arm64,linux/ppc64le,linux/s390x,linux/386,linux/arm/v7,linux/arm/v6
           push: ${{ github.event_name != 'pull_request' }}
-          tags: rkaehdaos/h2:latest, rkaehdaos/h2:${{ env.H2_VERSION }}
+          tags: ${{ steps.docker_tags.outputs.tags }}
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new
           build-args: |
