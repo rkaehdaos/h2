@@ -74,7 +74,6 @@ jobs:
           build-args: |
             H2_DOWNLOAD_URL=${{ steps.h2.outputs.download_url }}
             H2_VERSION=${{ steps.h2.outputs.version }}
-            H2_RELEASEDATE=${{ steps.h2.outputs.date }}
 
       # layer caching
       # github의 repo는 5GB까지만 Cache 보관 가능
