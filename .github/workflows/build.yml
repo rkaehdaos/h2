@@ -54,6 +54,9 @@ jobs:
           echo "Platforms:      ${{ steps.buildx.outputs.platforms }}"
           echo "Trigger:        ${{ github.event_name }}"
           echo "Is Manual:      ${{ github.event_name == 'workflow_dispatch' }}"
+          echo "H2 Version: ${{ steps.h2.outputs.version }}"
+          echo "H2 Filename: ${{ steps.h2.outputs.filename }}"
+          echo "H2 Download URL: ${{ steps.h2.outputs.download_url }}"
 
       - name: Prepare Docker tags
         id: docker_tags
