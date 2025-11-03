@@ -6,6 +6,9 @@ jobs:
   build:
     name: Build with buildx
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
     steps:
       - name: Get latest H2 release
         id: h2
@@ -25,6 +28,9 @@ jobs:
 
       - name: Checkout source code
         uses: actions/checkout@v5
+        with:
+          ref: main
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Setup QEMU
         uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
@@ -41,12 +47,18 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-buildx-
     
-      - name: Login to Dockerhub
+      - name: Login to Docker Hub
         uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-      
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Inspect builder
         run: |
@@ -68,12 +80,148 @@ jobs:
         with:
           platforms: linux/amd64,linux/arm64,linux/ppc64le,linux/s390x,linux/386,linux/arm/v7,linux/arm/v6
           push: true
-          tags: rkaehdaos/h2:latest, rkaehdaos/h2:${{ steps.h2.outputs.version }}
+          tags: |
+            rkaehdaos/h2:latest
+            rkaehdaos/h2:${{ steps.h2.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/h2:latest
+            ghcr.io/${{ github.repository_owner }}/h2:${{ steps.h2.outputs.version }}
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new
           build-args: |
             H2_DOWNLOAD_URL=${{ steps.h2.outputs.download_url }}
             H2_VERSION=${{ steps.h2.outputs.version }}
+
+      - name: Make GHCR package public
+        run: |
+          PACKAGE_NAME="h2"
+          OWNER="${{ github.repository_owner }}"
+
+          echo "Setting package visibility to public..."
+
+          # Set package visibility to public
+          curl -X PATCH \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            "https://api.github.com/user/packages/container/${PACKAGE_NAME}" \
+            -d '{"visibility":"public"}' || echo "Note: Package visibility may already be set or will be set on first push"
+
+          echo "✓ Package visibility updated"
+
+      - name: Check if release exists
+        id: check_release
+        run: |
+          if gh release view v${{ steps.h2.outputs.version }} >/dev/null 2>&1; then
+            echo "exists=true" >> $GITHUB_OUTPUT
+            echo "Release v${{ steps.h2.outputs.version }} already exists"
+          else
+            echo "exists=false" >> $GITHUB_OUTPUT
+            echo "Release v${{ steps.h2.outputs.version }} does not exist"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate release notes
+        if: steps.check_release.outputs.exists == 'false'
+        run: |
+          cat > release_notes.md << EOF
+          ## H2 Database Docker Image v${{ steps.h2.outputs.version }}
+
+          Released: ${{ steps.h2.outputs.date }}
+
+          ### 📦 Docker Images
+
+          **Docker Hub:**
+          ```bash
+          docker pull rkaehdaos/h2:${{ steps.h2.outputs.version }}
+          docker pull rkaehdaos/h2:latest
+          ```
+
+          **GitHub Container Registry:**
+          ```bash
+          docker pull ghcr.io/${{ github.repository_owner }}/h2:${{ steps.h2.outputs.version }}
+          docker pull ghcr.io/${{ github.repository_owner }}/h2:latest
+          ```
+
+          ### 🖥️ Supported Platforms
+          - `linux/amd64`
+          - `linux/arm64`
+          - `linux/ppc64le`
+          - `linux/s390x`
+          - `linux/386`
+          - `linux/arm/v7`
+          - `linux/arm/v6`
+
+          ### 🚀 Quick Start
+
+          **Basic usage:**
+          ```bash
+          docker run -d \
+            -p 1521:1521 -p 81:81 \
+            -v /path/to/data:/opt/h2-data \
+            --name my-h2 \
+            rkaehdaos/h2:${{ steps.h2.outputs.version }}
+          ```
+
+          **With auto-create database option:**
+          ```bash
+          docker run -d \
+            -p 1521:1521 -p 81:81 \
+            -v /path/to/data:/opt/h2-data \
+            -e H2_OPTIONS=-ifNotExists \
+            --name my-h2 \
+            rkaehdaos/h2:${{ steps.h2.outputs.version }}
+          ```
+
+          **Web Console:** http://localhost:81
+
+          ### 📝 What's Changed
+          - Upgrade to H2 Database ${{ steps.h2.outputs.version }}
+          - Based on Alpine Linux with OpenJDK JRE
+          - Multi-architecture support
+          - Minimal image size (~66MB)
+
+          ### 🔗 Links
+          - [H2 Database Official Release](https://github.com/h2database/h2database/releases/tag/version-${{ steps.h2.outputs.version }})
+          - [Docker Hub Repository](https://hub.docker.com/r/rkaehdaos/h2)
+          - [GitHub Container Registry](https://github.com/${{ github.repository_owner }}/h2/pkgs/container/h2)
+          - [Project Repository](https://github.com/${{ github.repository }})
+          EOF
+
+      - name: Create GitHub Release
+        if: steps.check_release.outputs.exists == 'false'
+        run: |
+          gh release create v${{ steps.h2.outputs.version }} \
+            --title "H2 Database v${{ steps.h2.outputs.version }}" \
+            --notes-file release_notes.md
+
+          echo "✓ GitHub Release v${{ steps.h2.outputs.version }} created successfully"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update README Release Notes
+        if: steps.check_release.outputs.exists == 'false'
+        run: |
+          DATE="${{ steps.h2.outputs.date }}"
+          VERSION="${{ steps.h2.outputs.version }}"
+
+          # 날짜 포맷 변경: 2024-08-11 -> 24-08-11
+          SHORT_DATE=$(echo $DATE | sed 's/^20//')
+
+          # Release Note 섹션에 새 항목 추가 (첫 번째 줄 다음에 삽입)
+          sed -i "/## Release Note/a\\- $SHORT_DATE : $VERSION upgrade" README.md
+
+          # 변경사항 커밋
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add README.md
+
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "📝docs(readme): update release note for v$VERSION"
+            git push origin main
+            echo "✓ README.md updated with release note"
+          fi
 
       # layer caching
       # github의 repo는 5GB까지만 Cache 보관 가능
