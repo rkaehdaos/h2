@@ -60,6 +60,8 @@ jobs:
           echo "H2 Version: ${{ steps.h2.outputs.version }}"
           echo "H2 Filename: ${{ steps.h2.outputs.filename }}"
           echo "H2 Download URL: ${{ steps.h2.outputs.download_url }}"
+          echo "H2 Release Date: ${{ steps.h2.outputs.date }}"
+
 
       - name: Build and push
         uses: docker/build-push-action@v3
