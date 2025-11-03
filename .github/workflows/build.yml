@@ -1,37 +1,14 @@
 name: Build and Push Docker image
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    types: [opened,reopened,synchronize]
-    branches:
-      - main
   workflow_dispatch:
-    inputs:
-      h2_version:
-        description: 'H2 Database Version (e.g., 2.3.232) - Leave empty to use secret'
-        required: false
-        type: string
-        default: ''
-      h2_releasedate:
-        description: 'H2 Release Date (e.g., 2024-08-11) - Leave empty to use secret'
-        required: false
-        type: string
-        default: ''
 
 jobs:
   build:
     name: Build with buildx
     runs-on: ubuntu-latest
-    env:
-      H2_VERSION: ${{ github.event.inputs.h2_version || secrets.H2VERSION }}
-      H2_RELEASEDATE: ${{ github.event.inputs.h2_releasedate || secrets.H2_RELEASEDATE }}
     steps:
-
       - name: Checkout source code
         uses: actions/checkout@master
-
 
       - name: Setup QEMU
         uses: docker/setup-qemu-action@v2
