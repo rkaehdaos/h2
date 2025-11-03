@@ -1,76 +1,37 @@
 name: Build and Push Docker image
 on:
-  push:
-    branches:
-      - main
-  pull_request:
-    types: [opened,reopened,synchronize]
-    branches:
-      - main
   workflow_dispatch:
-    inputs:
-      h2_version:
-        description: 'H2 Database Version (e.g., 2.3.232) - Leave empty to use secret'
-        required: false
-        type: string
-        default: ''
-      h2_releasedate:
-        description: 'H2 Release Date (e.g., 2024-08-11) - Leave empty to use secret'
-        required: false
-        type: string
-        default: ''
 
 jobs:
   build:
     name: Build with buildx
     runs-on: ubuntu-latest
-    env:
-      H2_VERSION: ${{ github.event.inputs.h2_version || secrets.H2VERSION }}
-      H2_RELEASEDATE: ${{ github.event.inputs.h2_releasedate || secrets.H2_RELEASEDATE }}
     steps:
+      - name: Get latest H2 release
+        id: h2
+        run: |
+          RELEASE_DATA=$(curl -s https://api.github.com/repos/h2database/h2database/releases/latest)
+
+          DOWNLOAD_URL=$(echo "$RELEASE_DATA" | jq -r '.assets[] | select(.name | endswith(".zip")) | .browser_download_url')
+          VERSION=$(echo "$RELEASE_DATA" | jq -r '.tag_name | sub("^version-"; "")')
+          FILENAME=$(echo "$RELEASE_DATA" | jq -r '.assets[] | select(.name | endswith(".zip")) | .name')
+          DATE=$(echo "$FILENAME" | sed -E 's/.*-([0-9]{4}-[0-9]{2}-[0-9]{2})\.zip/\1/')
+
+          echo "download_url=$DOWNLOAD_URL" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "filename=$FILENAME" >> $GITHUB_OUTPUT
+          echo "date=$DATE" >> $GITHUB_OUTPUT
+
 
       - name: Checkout source code
-        uses: actions/checkout@master
-
-      - name: Validate version inputs
-        if: github.event_name != 'pull_request'
-        run: |
-          echo "Validating H2 version inputs..."
-
-          # H2_VERSION 검증
-          if [ -z "${{ env.H2_VERSION }}" ]; then
-            echo "::error::H2_VERSION is not set. Please provide input or configure secret."
-            exit 1
-          fi
-
-          # H2_RELEASEDATE 검증
-          if [ -z "${{ env.H2_RELEASEDATE }}" ]; then
-            echo "::error::H2_RELEASEDATE is not set. Please provide input or configure secret."
-            exit 1
-          fi
-
-          # 버전 형식 검증 (예: 2.3.232)
-          if ! echo "${{ env.H2_VERSION }}" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' > /dev/null; then
-            echo "::error::H2_VERSION format is invalid. Expected format: X.Y.Z (e.g., 2.3.232)"
-            exit 1
-          fi
-
-          # 날짜 형식 검증 (예: 2024-08-11)
-          if ! echo "${{ env.H2_RELEASEDATE }}" | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' > /dev/null; then
-            echo "::error::H2_RELEASEDATE format is invalid. Expected format: YYYY-MM-DD (e.g., 2024-08-11)"
-            exit 1
-          fi
-
-          echo "✓ H2_VERSION: ${{ env.H2_VERSION }}"
-          echo "✓ H2_RELEASEDATE: ${{ env.H2_RELEASEDATE }}"
-          echo "Validation passed!"
+        uses: actions/checkout@v5
 
       - name: Setup QEMU
-        uses: docker/setup-qemu-action@v2
+        uses: docker/setup-qemu-action@29109295f81e9208d7d86ff1c6c12d2833863392 # v3.6.0
 
       - name: Set up Docker BuildX
         id: buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@e468171a9de216ec08956ac3ada2f0791b6bd435 # v3.11.1
 
       - name: Cache Docker layers
         uses: actions/cache@v4.3.0
@@ -81,10 +42,11 @@ jobs:
             ${{ runner.os }}-buildx-
     
       - name: Login to Dockerhub
-        uses: docker/login-action@v2
+        uses: docker/login-action@5e57cd118135c172c3672efd75eb46360885c0ef # v3.6.0
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
+      
 
       - name: Inspect builder
         run: |
@@ -93,44 +55,25 @@ jobs:
           echo "Status:         ${{ steps.buildx.outputs.status }}"
           echo "Flags:          ${{ steps.buildx.outputs.flags }}"
           echo "Platforms:      ${{ steps.buildx.outputs.platforms }}"
-          echo "H2VERSION:      ${{ env.H2_VERSION }}"
-          echo "H2_RELEASEDATE: ${{ env.H2_RELEASEDATE }}"
           echo "Trigger:        ${{ github.event_name }}"
           echo "Is Manual:      ${{ github.event_name == 'workflow_dispatch' }}"
+          echo "H2 Version: ${{ steps.h2.outputs.version }}"
+          echo "H2 Filename: ${{ steps.h2.outputs.filename }}"
+          echo "H2 Download URL: ${{ steps.h2.outputs.download_url }}"
+          echo "H2 Release Date: ${{ steps.h2.outputs.date }}"
 
-      - name: Prepare Docker tags
-        id: docker_tags
-        run: |
-          # PR 빌드인 경우 기본 태그만 사용 (secrets 접근 불가)
-          if [ "${{ github.event_name }}" == "pull_request" ]; then
-            TAGS="rkaehdaos/h2:pr-test"
-            echo "tags=${TAGS}" >> $GITHUB_OUTPUT
-            echo "Docker tags (PR): ${TAGS}"
-            echo "::notice::PR build - using test tag only, no push to registry"
-          else
-            # 환경 변수가 설정되었는지 재확인
-            if [ -z "${{ env.H2_VERSION }}" ]; then
-              echo "::error::H2_VERSION is empty, cannot create tags"
-              exit 1
-            fi
-
-            # 태그 생성
-            TAGS="rkaehdaos/h2:latest,rkaehdaos/h2:${{ env.H2_VERSION }}"
-            echo "tags=${TAGS}" >> $GITHUB_OUTPUT
-            echo "Docker tags: ${TAGS}"
-          fi
 
       - name: Build and push
         uses: docker/build-push-action@v3
         with:
           platforms: linux/amd64,linux/arm64,linux/ppc64le,linux/s390x,linux/386,linux/arm/v7,linux/arm/v6
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: ${{ steps.docker_tags.outputs.tags }}
+          push: true
+          tags: rkaehdaos/h2:latest, rkaehdaos/h2:${{ steps.h2.outputs.version }}
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new
           build-args: |
-            H2_VERSION=${{ env.H2_VERSION || '2.3.232' }}
-            H2_RELEASEDATE=${{ env.H2_RELEASEDATE || '2024-08-11' }}
+            H2_DOWNLOAD_URL=${{ steps.h2.outputs.download_url }}
+            H2_VERSION=${{ steps.h2.outputs.version }}
 
       # layer caching
       # github의 repo는 5GB까지만 Cache 보관 가능
