@@ -12,13 +12,13 @@ jobs:
         run: |
           RELEASE_DATA=$(curl -s https://api.github.com/repos/h2database/h2database/releases/latest)
 
-          DOWNLOAD_URL=$(echo "$RELEASE_DATA" | jq -r '.assets[] | select(.name | endswith(".zip")) | .browser_download_url')
-          VERSION=$(echo "$RELEASE_DATA" | jq -r '.tag_name | sub("^version-"; "")')
-          FILENAME=$(echo "$RELEASE_DATA" | jq -r '.assets[] | select(.name | endswith(".zip")) | .name')
+          H2_URL=$(echo "$RELEASE_DATA" | jq -r '.assets[] | select(.name | endswith(".zip")) | .browser_download_url')
+          H2_VERSION=$(echo "$RELEASE_DATA" | jq -r '.tag_name | sub("^version-"; "")')
+          H2_FILENAME=$(echo "$RELEASE_DATA" | jq -r '.assets[] | select(.name | endswith(".zip")) | .name')
           
-          echo "download_url=$DOWNLOAD_URL" >> $GITHUB_OUTPUT
-          echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "filename=$FILENAME" >> $GITHUB_OUTPUT
+          echo "h2_url=$H2_URL" >> $GITHUB_OUTPUT
+          echo "h2_version=$H2_VERSION" >> $GITHUB_OUTPUT
+          echo "h2_filename=$H2_FILENAME" >> $GITHUB_OUTPUT
 
       - name: Checkout source code
         uses: actions/checkout@v5
@@ -58,28 +58,6 @@ jobs:
           echo "H2 Filename: ${{ steps.h2.outputs.filename }}"
           echo "H2 Download URL: ${{ steps.h2.outputs.download_url }}"
 
-      - name: Prepare Docker tags
-        id: docker_tags
-        run: |
-          # PR 빌드인 경우 기본 태그만 사용 (secrets 접근 불가)
-          if [ "${{ github.event_name }}" == "pull_request" ]; then
-            TAGS="rkaehdaos/h2:pr-test"
-            echo "tags=${TAGS}" >> $GITHUB_OUTPUT
-            echo "Docker tags (PR): ${TAGS}"
-            echo "::notice::PR build - using test tag only, no push to registry"
-          else
-            # 환경 변수가 설정되었는지 재확인
-            if [ -z "${{ env.H2_VERSION }}" ]; then
-              echo "::error::H2_VERSION is empty, cannot create tags"
-              exit 1
-            fi
-
-            # 태그 생성
-            TAGS="rkaehdaos/h2:latest,rkaehdaos/h2:${{ env.H2_VERSION }}"
-            echo "tags=${TAGS}" >> $GITHUB_OUTPUT
-            echo "Docker tags: ${TAGS}"
-          fi
-
       - name: Build and push
         uses: docker/build-push-action@v3
         with:
@@ -89,7 +67,8 @@ jobs:
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new
           build-args: |
-            H2_VERSION=${{ env.H2_VERSION || '2.3.232' }}
+            H2_DOWNLOAD_URL=${{ steps.h2.outputs.download_url }}
+            H2_VERSION=${{ steps.h2.outputs.version }}"
             H2_RELEASEDATE=${{ env.H2_RELEASEDATE || '2024-08-11' }}
 
       # layer caching
