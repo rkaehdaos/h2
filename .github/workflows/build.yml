@@ -15,10 +15,12 @@ jobs:
           H2_URL=$(echo "$RELEASE_DATA" | jq -r '.assets[] | select(.name | endswith(".zip")) | .browser_download_url')
           H2_VERSION=$(echo "$RELEASE_DATA" | jq -r '.tag_name | sub("^version-"; "")')
           H2_FILENAME=$(echo "$RELEASE_DATA" | jq -r '.assets[] | select(.name | endswith(".zip")) | .name')
-          
+          H2_DATE==$(echo "$FILENAME" | sed -E 's/.*-([0-9]{4}-[0-9]{2}-[0-9]{2})\.zip/\1/')
           echo "h2_url=$H2_URL" >> $GITHUB_OUTPUT
           echo "h2_version=$H2_VERSION" >> $GITHUB_OUTPUT
           echo "h2_filename=$H2_FILENAME" >> $GITHUB_OUTPUT
+          echo "h2_date=$H2_DATE" >> $GITHUB_OUTPUT
+
 
       - name: Checkout source code
         uses: actions/checkout@v5
