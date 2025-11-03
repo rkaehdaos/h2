@@ -67,14 +67,14 @@ jobs:
         uses: docker/build-push-action@v3
         with:
           platforms: linux/amd64,linux/arm64,linux/ppc64le,linux/s390x,linux/386,linux/arm/v7,linux/arm/v6
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           tags: ${{ steps.docker_tags.outputs.tags }}
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new
           build-args: |
             H2_DOWNLOAD_URL=${{ steps.h2.outputs.download_url }}
             H2_VERSION=${{ steps.h2.outputs.version }}"
-            H2_RELEASEDATE=${{ env.H2_RELEASEDATE || '2024-08-11' }}
+            H2_RELEASEDATE=${{ steps.h2.outputs.date }}"
 
       # layer caching
       # github의 repo는 5GB까지만 Cache 보관 가능

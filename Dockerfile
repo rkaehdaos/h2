@@ -3,19 +3,15 @@ FROM openjdk:jre-alpine
 # Set Default version
 ARG H2_VERSION="2.4.240"
 ARG H2_RELEASEDATE="2025-09-22"
+ARG H2_DOWNLOAD_URL= "https://github.com/h2database/h2database/releases/download/version-2.4.240/h2-2025-09-22.zip"
 
-RUN --mount=type=secret,id=H2_VERSION \
-    --mount=type=secret,id=H2_RELEASEDATE \
-    export H2_VERSION=$(cat /run/secrets/H2_VERSION) && \
-    export H2_RELEASEDATE=$(cat /run/secrets/H2_RELEASEDATE) && \
-   echo ${H2_VERSION} && echo ${H2_RELEASEDATE}
 
 LABEL name ="GeunChang Ahn"
 LABEL email = "rkaehdaos@gmail.com"
 LABEL version = "version-${H2_VERSION}"
 LABEL description = "${H2_VERSION} upgrade"
 
-ENV DOWNLOAD https://github.com/h2database/h2database/releases/download/version-${H2_VERSION}/h2-${H2_RELEASEDATE}.zip
+ENV DOWNLOAD ${H2_DOWNLOAD_URL}
 
 ENV DATA_DIR /opt/h2-data
 
