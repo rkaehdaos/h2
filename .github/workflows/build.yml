@@ -15,11 +15,13 @@ jobs:
           DOWNLOAD_URL=$(echo "$RELEASE_DATA" | jq -r '.assets[] | select(.name | endswith(".zip")) | .browser_download_url')
           VERSION=$(echo "$RELEASE_DATA" | jq -r '.tag_name | sub("^version-"; "")')
           FILENAME=$(echo "$RELEASE_DATA" | jq -r '.assets[] | select(.name | endswith(".zip")) | .name')
-          
-          
+          DATE=$(echo "$FILENAME" | sed -E 's/.*-([0-9]{4}-[0-9]{2}-[0-9]{2})\.zip/\1/')
+
           echo "download_url=$DOWNLOAD_URL" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT
           echo "filename=$FILENAME" >> $GITHUB_OUTPUT
+          echo "date=$DATE" >> $GITHUB_OUTPUT
+
 
       - name: Checkout source code
         uses: actions/checkout@v5
