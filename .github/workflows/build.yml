@@ -3,17 +3,68 @@ on:
   push:
     branches:
       - main
-    pull_request:
+  pull_request:
+    types: [opened,reopened,synchronize]
+    branches:
       - main
+  workflow_dispatch:
+    inputs:
+      h2_version:
+        description: 'H2 Database Version (e.g., 2.3.232) - Leave empty to use secret'
+        required: false
+        type: string
+        default: ''
+      h2_releasedate:
+        description: 'H2 Release Date (e.g., 2024-08-11) - Leave empty to use secret'
+        required: false
+        type: string
+        default: ''
+
 jobs:
   build:
     name: Build with buildx
     runs-on: ubuntu-latest
+    env:
+      H2_VERSION: ${{ github.event.inputs.h2_version || secrets.H2VERSION }}
+      H2_RELEASEDATE: ${{ github.event.inputs.h2_releasedate || secrets.H2_RELEASEDATE }}
     steps:
 
       - name: Checkout source code
         uses: actions/checkout@master
-      
+
+      - name: Validate version inputs
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "Validating H2 version inputs..."
+
+          # H2_VERSION 검증
+          if [ -z "${{ env.H2_VERSION }}" ]; then
+            echo "::error::H2_VERSION is not set. Please provide input or configure secret."
+            exit 1
+          fi
+
+          # H2_RELEASEDATE 검증
+          if [ -z "${{ env.H2_RELEASEDATE }}" ]; then
+            echo "::error::H2_RELEASEDATE is not set. Please provide input or configure secret."
+            exit 1
+          fi
+
+          # 버전 형식 검증 (예: 2.3.232)
+          if ! echo "${{ env.H2_VERSION }}" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' > /dev/null; then
+            echo "::error::H2_VERSION format is invalid. Expected format: X.Y.Z (e.g., 2.3.232)"
+            exit 1
+          fi
+
+          # 날짜 형식 검증 (예: 2024-08-11)
+          if ! echo "${{ env.H2_RELEASEDATE }}" | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' > /dev/null; then
+            echo "::error::H2_RELEASEDATE format is invalid. Expected format: YYYY-MM-DD (e.g., 2024-08-11)"
+            exit 1
+          fi
+
+          echo "✓ H2_VERSION: ${{ env.H2_VERSION }}"
+          echo "✓ H2_RELEASEDATE: ${{ env.H2_RELEASEDATE }}"
+          echo "Validation passed!"
+
       - name: Setup QEMU
         uses: docker/setup-qemu-action@v2
 
@@ -22,7 +73,7 @@ jobs:
         uses: docker/setup-buildx-action@v2
 
       - name: Cache Docker layers
-        uses: actions/cache@v2
+        uses: actions/cache@v4.3.0
         with:
           path: /tmp/.buildx-cache
           key: ${{ runner.os }}-buildx-${{ github.sha }}
@@ -42,22 +93,44 @@ jobs:
           echo "Status:         ${{ steps.buildx.outputs.status }}"
           echo "Flags:          ${{ steps.buildx.outputs.flags }}"
           echo "Platforms:      ${{ steps.buildx.outputs.platforms }}"
-          echo "H2VERSION:      ${{ secrets.H2VERSION }}"
-          echo "H2_RELEASEDATE: ${{ secrets.H2_RELEASEDATE }}"
+          echo "H2VERSION:      ${{ env.H2_VERSION }}"
+          echo "H2_RELEASEDATE: ${{ env.H2_RELEASEDATE }}"
+          echo "Trigger:        ${{ github.event_name }}"
+          echo "Is Manual:      ${{ github.event_name == 'workflow_dispatch' }}"
 
-          
+      - name: Prepare Docker tags
+        id: docker_tags
+        run: |
+          # PR 빌드인 경우 기본 태그만 사용 (secrets 접근 불가)
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            TAGS="rkaehdaos/h2:pr-test"
+            echo "tags=${TAGS}" >> $GITHUB_OUTPUT
+            echo "Docker tags (PR): ${TAGS}"
+            echo "::notice::PR build - using test tag only, no push to registry"
+          else
+            # 환경 변수가 설정되었는지 재확인
+            if [ -z "${{ env.H2_VERSION }}" ]; then
+              echo "::error::H2_VERSION is empty, cannot create tags"
+              exit 1
+            fi
+
+            # 태그 생성
+            TAGS="rkaehdaos/h2:latest,rkaehdaos/h2:${{ env.H2_VERSION }}"
+            echo "tags=${TAGS}" >> $GITHUB_OUTPUT
+            echo "Docker tags: ${TAGS}"
+          fi
+
       - name: Build and push
         uses: docker/build-push-action@v3
         with:
           platforms: linux/amd64,linux/arm64,linux/ppc64le,linux/s390x,linux/386,linux/arm/v7,linux/arm/v6
-          push: true
-          tags: rkaehdaos/h2:latest, rkaehdaos/h2:${{ secrets.H2VERSION }}
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.docker_tags.outputs.tags }}
           cache-from: type=local,src=/tmp/.buildx-cache
           cache-to: type=local,dest=/tmp/.buildx-cache-new
-          # secrets: |
           build-args: |
-            "H2_VERSION=${{ secrets.H2VERSION }}"
-            "H2_RELEASEDATE=${{ secrets.H2RELEASEDATE }}"
+            H2_VERSION=${{ env.H2_VERSION || '2.3.232' }}
+            H2_RELEASEDATE=${{ env.H2_RELEASEDATE || '2024-08-11' }}
 
       # layer caching
       # github의 repo는 5GB까지만 Cache 보관 가능
