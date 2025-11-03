@@ -1,7 +1,8 @@
 FROM openjdk:jre-alpine
 
-ARG H2_VERSION=default_version
-ARG H2_RELEASEDATE=default_date
+# Set Default version
+ARG H2_VERSION="2.4.240"
+ARG H2_RELEASEDATE="2025-09-22"
 
 RUN --mount=type=secret,id=H2_VERSION \
     --mount=type=secret,id=H2_RELEASEDATE \
