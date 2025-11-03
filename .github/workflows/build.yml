@@ -32,38 +32,6 @@ jobs:
       - name: Checkout source code
         uses: actions/checkout@master
 
-      - name: Validate version inputs
-        if: github.event_name != 'pull_request'
-        run: |
-          echo "Validating H2 version inputs..."
-
-          # H2_VERSION 검증
-          if [ -z "${{ env.H2_VERSION }}" ]; then
-            echo "::error::H2_VERSION is not set. Please provide input or configure secret."
-            exit 1
-          fi
-
-          # H2_RELEASEDATE 검증
-          if [ -z "${{ env.H2_RELEASEDATE }}" ]; then
-            echo "::error::H2_RELEASEDATE is not set. Please provide input or configure secret."
-            exit 1
-          fi
-
-          # 버전 형식 검증 (예: 2.3.232)
-          if ! echo "${{ env.H2_VERSION }}" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' > /dev/null; then
-            echo "::error::H2_VERSION format is invalid. Expected format: X.Y.Z (e.g., 2.3.232)"
-            exit 1
-          fi
-
-          # 날짜 형식 검증 (예: 2024-08-11)
-          if ! echo "${{ env.H2_RELEASEDATE }}" | grep -E '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' > /dev/null; then
-            echo "::error::H2_RELEASEDATE format is invalid. Expected format: YYYY-MM-DD (e.g., 2024-08-11)"
-            exit 1
-          fi
-
-          echo "✓ H2_VERSION: ${{ env.H2_VERSION }}"
-          echo "✓ H2_RELEASEDATE: ${{ env.H2_RELEASEDATE }}"
-          echo "Validation passed!"
 
       - name: Setup QEMU
         uses: docker/setup-qemu-action@v2
