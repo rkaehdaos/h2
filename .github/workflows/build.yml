@@ -7,6 +7,19 @@ jobs:
     name: Build with buildx
     runs-on: ubuntu-latest
     steps:
+      - name: Get latest H2 release
+        id: h2
+        run: |
+          RELEASE_DATA=$(curl -s https://api.github.com/repos/h2database/h2database/releases/latest)
+
+          DOWNLOAD_URL=$(echo "$RELEASE_DATA" | jq -r '.assets[] | select(.name | endswith(".zip")) | .browser_download_url')
+          VERSION=$(echo "$RELEASE_DATA" | jq -r '.tag_name | sub("^version-"; "")')
+          FILENAME=$(echo "$RELEASE_DATA" | jq -r '.assets[] | select(.name | endswith(".zip")) | .name')
+          
+          echo "download_url=$DOWNLOAD_URL" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "filename=$FILENAME" >> $GITHUB_OUTPUT
+
       - name: Checkout source code
         uses: actions/checkout@v5
 
